@@ -1,0 +1,6 @@
+<?xml version="1.0"?>
+<launch>
+    <node pkg="crsf_drv" type="crsf_drv_node.py" name="crsf_joy_drv" output="screen">
+        <rosparam file="$(find crsf_drv)/config/crsf_drv.yaml" command="load"/>
+    </node>
+</launch>

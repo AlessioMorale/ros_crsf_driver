@@ -1,0 +1,14 @@
+mapping:
+  buttons: [4, 5, 6, 7]
+  axis: [0, 1, 2, 3]
+
+serial:
+  port: /dev/ttyUSB0
+  baudrate: 425000
+
+joy_message_rate: 25
+
+failsafe:
+  timeout: .5
+  axis: [0, 0, 0, 0]
+  buttons: [0, 0, 0, 0]
