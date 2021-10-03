@@ -82,6 +82,11 @@ class CRSFDrv:
             self._set_failsafe()
             self._is_running = False
 
+    def adjust_channel(self, value: float) -> float:
+        value = value if abs(value) > self._config.deadband else 0
+        value = max(-1.0, min(1.0, value))
+        return value
+
     def publish(self, packet: Container, status: PacketValidationStatus) -> None:
         if status == PacketValidationStatus.VALID:
             if packet.header.type == PacketsTypes.RC_CHANNELS_PACKED:
@@ -90,9 +95,7 @@ class CRSFDrv:
                     channels = [
                         ((x - 992) * 10 / 8000) for x in packet.payload.channels
                     ]
-                    channels = [
-                        x if abs(x) > self._config.deadband else 0 for x in channels
-                    ]
+                    channels = [self.adjust_channel(x) for x in channels]
                     # Inversion is a temporary workaround as the parser return them reversed
                     self._last_values = channels[::-1]
                     self._last_update_time = time()
