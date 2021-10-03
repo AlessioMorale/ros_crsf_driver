@@ -52,6 +52,8 @@ if(CATKIN_ENABLE_TESTING)
     DEPENDENCIES ${PROJECT_NAME}_generate_virtualenv
   )
 
+  catkin_python_setup()
+
   # rostests
   # catkin_install_python(
   #   PROGRAMS
