@@ -1,9 +1,7 @@
 from dataclasses import dataclass
 from threading import Lock, Thread
-from turtle import pu
-from typing import List, final
+from typing import List
 from construct import Container
-from pytest import param
 from time import sleep, time
 from sensor_msgs.msg import Joy
 from .joy_publisher import JoyPublisher
@@ -26,6 +24,7 @@ class CRSFConfiguration:
     failsafe_timeout: float
     failsafe_axis: List[float]
     failsafe_buttons: List[float]
+    deadband: float
 
     def __repr__(self) -> str:
         ret = f"""configuration:
@@ -34,6 +33,7 @@ class CRSFConfiguration:
         serial: {self.serial_port} @ {self.serial_baudrate}
         joy message rate: {self.joy_message_rate}
         failsafe: timeout {self.failsafe_timeout}, axis[{self.failsafe_axis}] , buttons [{self.failsafe_buttons}]
+        deadband: {self.deadband}
         """
         return ret
 
@@ -87,7 +87,12 @@ class CRSFDrv:
             if packet.header.type == PacketsTypes.RC_CHANNELS_PACKED:
                 with self._values_lock:
                     # derived from CRSF spec Rev7, TICKS_TO_US(x) = ((x - 992) * 5 / 8 + 1500)
-                    channels = [((x - 992) * 10 / 8000) for x in packet.payload.channels]
+                    channels = [
+                        ((x - 992) * 10 / 8000) for x in packet.payload.channels
+                    ]
+                    channels = [
+                        x if abs(x) > self._config.deadband else 0 for x in channels
+                    ]
                     # Inversion is a temporary workaround as the parser return them reversed
                     self._last_values = channels[::-1]
                     self._last_update_time = time()

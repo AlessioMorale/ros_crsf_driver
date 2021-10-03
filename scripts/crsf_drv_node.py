@@ -18,12 +18,14 @@ def main():
         rospy.get_param("~joy_message_rate", 50),
         rospy.get_param("~failsafe/timeout", 0.5),
         rospy.get_param("~failsafe/axis", [0, 0, 0, 0]),
-        rospy.get_param("~failsafe/buttons", [0, 0, 0, 0])
+        rospy.get_param("~failsafe/buttons", [0, 0, 0, 0]),
+        rospy.get_param("~deadband", 0),
     )
 
     rospy.loginfo(config)
     crsf_drv = CRSFDrv(config, publisher)
     rospy.loginfo("CRSF joy emulation driver running")
     crsf_drv.run()
+
 
 main()

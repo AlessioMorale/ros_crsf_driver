@@ -12,3 +12,5 @@ failsafe:
   timeout: .5
   axis: [0, 0, 0, 0]
   buttons: [0, 0, 0, 0]
+
+deadband: 0.05
