@@ -17,7 +17,7 @@ class JoyPublisher:
         self._joy_pub = publisher
 
     def _remap(self, source: List[float], map: List[int]) -> List[float]:
-        destination = [source[x] for x in map]
+        destination = [source[x] if x >= 0 else 0 for x in map]
         return destination
 
     def remap_and_publish(self, values: List[float]) -> None:
