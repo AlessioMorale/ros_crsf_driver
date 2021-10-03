@@ -1,65 +1,107 @@
+from dataclasses import dataclass
 from threading import Lock, Thread
+from turtle import pu
 from typing import List, final
+from construct import Container
 from pytest import param
 from time import sleep, time
 from sensor_msgs.msg import Joy
 from .joy_publisher import JoyPublisher
 from serial import Serial
-from crsf_parser import CRSFParser
+from crsf_parser import CRSFParser, PacketsTypes
 import rospy
 
 
+@dataclass
+class CRSFConfiguration:
+    """
+    CRSF driver configuration
+    """
+
+    axis_map: List[int]
+    buttons_map: List[int]
+    serial_port: str
+    serial_baudrate: int
+    joy_message_rate: float
+    failsafe_timeout: float
+    failsafe_axis: List[float]
+    failsafe_buttons: List[float]
+
+    def __repr__(self) -> str:
+        ret = f"""configuration:
+        axis_map:{self.axis_map}
+        buttons_map:{self.buttons_map}
+        serial: {self.serial_port} @ {self.serial_baudrate}
+        joy message rate: {self.joy_message_rate}
+        failsafe: timeout {self.failsafe_timeout}, axis[{self.failsafe_axis}] , buttons [{self.failsafe_buttons}]
+        """
+        return ret
+
+
 class CRSFDrv:
-    def __init__(self) -> None:
+    """
+    CRSF Joy Driver implementaton
+    """
 
-        self._message_pub = rospy.Publisher("~/joy", Joy, queue_size=10)
-        axis_map = rospy.get_param("~mapping/axis", default=[])
-        buttons_map = rospy.get_param("~mapping/buttons", default=[])
-        self._joy_publisher = JoyPublisher(axis_map, buttons_map, self._message_pub)
+    def __init__(self, config: CRSFConfiguration, publisher: rospy.Publisher) -> None:
 
-        self._port = rospy.get_param("~serial/port")
-        self._baudrate = rospy.get_param("~serial/baudrate", 425000)
-
-        self._messages_period = 1.0 / rospy.get_param("~message_rate", 50)
-
-        self._timeout = rospy.get_param("~failsafe/timeout", 0.5)
-        self._failsafe_axis = rospy.get_param("~failsafe/axis", [0, 0, 0, 0])
-        self._failsafe_buttons = rospy.get_param("~failsafe/buttons", [0, 0, 0, 0])
+        self._config = config
+        self._message_pub = publisher
+        self._joy_publisher = JoyPublisher(
+            self._config.axis_map, self._config.buttons_map, self._message_pub
+        )
 
         self._values_lock = Lock()
-        self._last_values = []
+        self._last_values = None
         self._last_update_time: float = 0
         self._is_running = True
 
-        self._crsf_parser = CRSFParser(self._joy_publisher.publish)
+        self._crsf_parser = CRSFParser(self.publish)
 
         self._publishing_thread = Thread(target=self._publishing_worker)
 
     def _set_failsafe(self) -> None:
-        self._joy_publisher.publish(self._failsafe_axis, self._failsafe_buttons)
+        self._joy_publisher.publish(
+            self._config.failsafe_axis, self._config.failsafe_buttons
+        )
 
     def _publishing_worker(self) -> None:
         try:
-            previous_update_time: float = time()
+            previous_update = 0
             while self._is_running:
-                time_since_last_update = previous_update_time - self._last_update_time
-                if time_since_last_update > self._timeout:
-                    self._set_failsafe()
-
-                self._joy_publisher.remap_and_publish(self._last_values)
-                sleep(self._messages_period)
+                with self._values_lock:
+                    time_since_last_update = (
+                        time() - self._last_update_time
+                    )
+                    if time_since_last_update > self._config.failsafe_timeout:
+                        self._set_failsafe()
+                    else:
+                        if previous_update != self._last_update_time:
+                            previous_update = self._last_update_time
+                            self._joy_publisher.remap_and_publish(self._last_values)
+                sleep(1.0 / self._config.joy_message_rate)
         finally:
             self._set_failsafe()
             self._is_running = False
 
-    def publish(self, values: List[float]) -> None:
-        with self._values_lock:
-            self._last_values = values
+    def publish(self, values: Container) -> None:
+        if values.header.type == PacketsTypes.RC_CHANNELS_PACKED:
+            with self._values_lock:
+                # derived from CRSF spec Rev7, TICKS_TO_US(x) = ((x - 992) * 5 / 8 + 1500)
+                channels = [((x - 992) * 10 / 8000) for x in values.payload.channels]
+                self._last_values = channels
+                self._last_update_time = time()
 
     def run(self) -> None:
-        with Serial(self._port, self._baudrate, timeout=2) as ser:
-            input = bytearray()
+        with Serial(
+            self._config.serial_port, self._config.serial_baudrate, timeout=2
+        ) as ser:
+            input_data = bytearray()
+            self._is_running = True
+            self._publishing_thread.start()
             while not rospy.is_shutdown():
                 values = ser.read(100)
-                input.extend(values)
-                self._crsf_parser.parse_stream(input)
+                input_data.extend(values)
+                self._crsf_parser.parse_stream(input_data)
+            self._is_running = False
+            self._publishing_thread.join()
