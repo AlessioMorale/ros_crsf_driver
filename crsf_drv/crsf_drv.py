@@ -8,7 +8,7 @@ from time import sleep, time
 from sensor_msgs.msg import Joy
 from .joy_publisher import JoyPublisher
 from serial import Serial
-from crsf_parser import CRSFParser, PacketsTypes
+from crsf_parser import CRSFParser, PacketsTypes, PacketValidationStatus
 import rospy
 
 
@@ -70,9 +70,7 @@ class CRSFDrv:
             previous_update = 0
             while self._is_running:
                 with self._values_lock:
-                    time_since_last_update = (
-                        time() - self._last_update_time
-                    )
+                    time_since_last_update = time() - self._last_update_time
                     if time_since_last_update > self._config.failsafe_timeout:
                         self._set_failsafe()
                     else:
@@ -84,13 +82,19 @@ class CRSFDrv:
             self._set_failsafe()
             self._is_running = False
 
-    def publish(self, values: Container) -> None:
-        if values.header.type == PacketsTypes.RC_CHANNELS_PACKED:
-            with self._values_lock:
-                # derived from CRSF spec Rev7, TICKS_TO_US(x) = ((x - 992) * 5 / 8 + 1500)
-                channels = [((x - 992) * 10 / 8000) for x in values.payload.channels]
-                self._last_values = channels
-                self._last_update_time = time()
+    def publish(self, packet: Container, status: PacketValidationStatus) -> None:
+        if status == PacketValidationStatus.VALID:
+            if packet.header.type == PacketsTypes.RC_CHANNELS_PACKED:
+                with self._values_lock:
+                    # derived from CRSF spec Rev7, TICKS_TO_US(x) = ((x - 992) * 5 / 8 + 1500)
+                    channels = [((x - 992) * 10 / 8000) for x in packet.payload.channels]
+                    # Inversion is a temporary workaround as the parser return them reversed
+                    self._last_values = channels[::-1]
+                    self._last_update_time = time()
+        else:
+            rospy.logwarn_throttle(
+                5, f"received invalid data with status {status}, {packet}"
+            )
 
     def run(self) -> None:
         with Serial(
@@ -103,5 +107,6 @@ class CRSFDrv:
                 values = ser.read(100)
                 input_data.extend(values)
                 self._crsf_parser.parse_stream(input_data)
+
             self._is_running = False
             self._publishing_thread.join()

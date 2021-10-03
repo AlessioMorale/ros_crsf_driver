@@ -1,2 +1,2 @@
-crsf_parser==0.2.3
+crsf_parser>=0.3.0
 pyserial
