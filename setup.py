@@ -18,7 +18,7 @@ from catkin_pkg.python_setup import generate_distutils_setup
 d = generate_distutils_setup(
     packages=['crsf_drv'],
     scripts=['scripts/crsf_drv_node.py'],
-    package_dir={'': 'src'}
+    package_dir={'': '.'}
 )
 
 setup(**d)
