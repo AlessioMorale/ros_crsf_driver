@@ -56,6 +56,8 @@ class CRSFDrv:
         self._last_update_time: float = 0
         self._is_running = True
 
+        self._telemetry_lock = Lock()
+        self._telemetry_frame: bytes = None
         self._crsf_parser = CRSFParser(self.publish)
 
         self._publishing_thread = Thread(target=self._publishing_worker)
@@ -65,6 +67,9 @@ class CRSFDrv:
             self._config.failsafe_axis, self._config.failsafe_buttons
         )
 
+    def publish_telemetry(self, telemetry_frame: bytes) -> None:
+        with self._telemetry_lock:
+            self._telemetry_frame = telemetry_frame 
     def _publishing_worker(self) -> None:
         try:
             previous_update = 0
@@ -105,16 +110,22 @@ class CRSFDrv:
             )
 
     def run(self) -> None:
-        with Serial(
-            self._config.serial_port, self._config.serial_baudrate, timeout=2
-        ) as ser:
             input_data = bytearray()
             self._is_running = True
             self._publishing_thread.start()
             while not rospy.is_shutdown():
-                values = ser.read(100)
-                input_data.extend(values)
-                self._crsf_parser.parse_stream(input_data)
-
+                try:
+                    with Serial(self._config.serial_port, self._config.serial_baudrate, timeout=2) as ser:
+                        while not rospy.is_shutdown():
+                                values = ser.read(100)
+                                with self._telemetry_lock:
+                                    if self._telemetry_frame:
+                                        ser.write(self._telemetry_frame)
+                                    self._telemetry_frame = None
+                                
+                                input_data.extend(values)
+                                self._crsf_parser.parse_stream(input_data)
+                except:
+                    pass
             self._is_running = False
             self._publishing_thread.join()
