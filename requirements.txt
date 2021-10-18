@@ -1,4 +1,4 @@
 construct-typing==0.5.1   # via crsf-parser
 construct==2.10.67        # via construct-typing, crsf-parser
-crsf-parser==0.3.0        # via -r requirements.in
+crsf-parser==0.3.2        # via -r requirements.in
 pyserial==3.5             # via -r requirements.in
